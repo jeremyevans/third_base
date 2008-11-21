@@ -1,0 +1,261 @@
+= ThirdBase: A Fast and Easy Date/DateTime Class for Ruby
+
+ThirdBase differs from Ruby's standard Date/DateTime class in the following
+ways:
+
+- ThirdBase is roughly 2-12 times faster depending on usage
+- ThirdBase has a lower memory footprint
+- ThirdBase supports pluggable parsers
+- ThirdBase doesn't depend on Ruby's Rational class
+- ThirdBase always uses the gregorian calendar
+
+== Background
+
+The Ruby standard Date class tries to be all things to all people.  While
+it does a decent job, it's slow enough to be the bottleneck in some
+applications.  If we decide not to care about the Date of Calendar Reform
+and the fact that the Astronomical Julian Date differs from the Julian
+Date, much of the complexity of Ruby's standard Date/DateTime class can
+be removed, and there can be significant improvements in speed.
+
+== Installation
+
+  sudo gem install third_base
+
+== Source
+
+Source is available via github:
+
+  http://github.com/jeremyevans/third_base
+
+You can check it out with git:
+
+  git clone git://github.com/jeremyevans/third_base.git
+
+== Usage and Compatibility
+
+There are three ways that ThirdBase can be used:
+
+=== Alongside the standard Date/DateTime class
+
+Usage:
+
+  require 'third_base'
+
+If you just require it, you can use ThirdBase::Date and ThirdBase::DateTime
+alongside the standard Date and DateTime classes. This ensures compatibility
+with all existing software, but doesn't provide any performance increase to any
+class not explicitly using ThirdBase.
+
+=== Replace Date and DateTime with ThirdBase's
+
+Usage:
+
+  require 'third_base'
+  include ThirdBase
+
+This is the least compatible method.  It may work for some applications but
+will break most, because if they use "require 'date'", they will get a
+superclass mismatch.  Also ThirdBase::Date is not completely API compatible
+with the standard Date class, so it could break depending on how the
+application used Date.
+
+If you aren't using any libraries that use ruby's standard Date class, this is
+an easy way to be able to use Date and DateTime to refer to ThirdBase's
+versions instead of Ruby's standard versions.
+
+Note that rubygems indirectly uses the standard Date class, so if you want to
+do this, you'll have to unpack the gem and put it in the $LOAD_PATH manually.
+
+One case in which this pattern is useful is if you want to use ThirdBase within
+your libraries as the date class, but with other libaries that use the standard
+version as the date class.  To do this:
+
+  require 'third_base'
+  class YourLibrary
+    include ThirdBase
+    def today
+      Date.today
+    end
+  end
+  
+This makes it so that references to Date within YourLibrary use
+ThirdBase::Date, while references to Date outside YourLibrary use the standard
+Date class.
+
+=== Use ThirdBase's compatibility mode via the third_base executable
+
+Usage:
+
+  $ third_base irb 
+  $ third_base mongrel_rails
+  $ third_base ruby -rdate -e "p Date.ancestors"
+
+This should be used if you want to make all libraries use ThirdBase's Date
+class.  Doing this means that even if they "require 'date'", they will use
+ThirdBases's versions.  More explicity, it will define Date and DateTime
+as subclasses of ThirdBase::Date and ThirdBase::DateTime, and make them as
+API compatible as possible.
+
+You could get this by using "require 'third_base/compat'".  Unfortunately,
+that doesn't work if you are using rubygems (and ThirdBase is mainly
+distributed as a gem), because rubygems indirectly requires date.
+
+The third_base executable modifies the RUBYLIB and RUBYOPT environment
+variables and should ensure that even if a ruby library requires 'date', they
+will get the ThirdBase version with the compatibility API.  To use the
+third_base executable, you just prepend it to any command that you want to run.
+
+This is the middle ground.  It should work for most applications, but as
+ThirdBase's compatibility API is not 100% compatible with the standard Date
+class, things can still break. See the next section for some differences.
+
+If you have good unit tests/specs, you can try using this in your application
+then running your specs (e.g. third_base rake spec).  Assuming good coverage,
+if you have no errors, it should be OK to use, and you'll get a nice speedup.
+
+== Incompatibilities with the standard Date class when using third_base/compat
+
+* The marshalling format is different
+* The new! class methods take different arguments
+* Methods which returned rationals now return integers or floats
+* ajd and amjd are now considered the same as jd and mjd, respectively
+* The gregorian calendar is now the only calendar used
+* All parsed two digit years are mapped to a year between 1969 and 2068
+* Default parsing may be different, but the user can modify the parsers used
+* Potentially others, but hopefully anything else can be fixed
+
+== Pluggable Parsers
+
+The standard Date class has a hard coded parsing routine that cannot be easily
+modified by the user.  ThirdBase uses a different approach, by allowing the
+user to add parsers and change the order of parsers.  There are some default
+parsers built into ThirdBase's Date and DateTime, and they should work well for
+the majority of American users.  However, there is no guarantee that it
+includes a parser for the format you want to parse (though you can add a parser
+that will do so).
+
+The user should note that ThirdBases's Date and DateTime classes have
+completely separate parsers, and modifying one does not affect the other.
+
+=== Adding Parser Types
+
+ThirdBase's parsers are separated into parser types.  The Date class has
+four parser types built in: :iso, :us, :num, and :eu, of which only :iso,
+:us, and :num are used by default.   DateTime has all of the parser types
+that Date has, and an additional one called :time.
+
+To add a parser type:
+
+  Date.add_parser_type(:mine)
+  DateTime.add_parser_type(:mine)
+
+=== Adding Parsers to Parser Types
+
+A ThirdBase Date/Datetime parser consists of two parts, a regular
+expression, and a proc that takes a MatchData object and returns a hash
+passed to Date/DateTime.new!.  The proc is only called if the regular
+expression matches the string to be parsed, and it can return nil if it
+is not able to successfully parse the string (even if the string matches
+the regular expression).  To add a parser, you use the add_parser class
+method, which takes an argument specifying which parser family to
+use, the regular expression, and a block that is used as a proc for the
+parser:
+
+To add a parser to a parser type:
+
+  Date.add_parser(:mine, /\Atoday\z/i) do |m|
+    t = Time.now
+    {:civil=>[t.year, t.mon, t.day]}
+  end
+  DateTime.add_parser(:mine, /\Anow\z/i) do |m|
+    t = Time.now
+    {:civil=>[t.year, t.mon, t.day], :parts=>[t.hour, t.min, t.sec, t.usec] \
+      :offset=>t.utc_offset}
+  end
+
+Adding a parser to a parser type adds it to the front of the array of parsers 
+for that type, so it will be tried before other parsers for that type.  It is
+an error to add a parser to a parser type that doesn't exist.
+
+=== Modifying the Order of Parsers Types
+
+You can change the order in which parsers types are tried by using the
+use_parsers class method, which takes multiple arguments specifying the order
+of parser types:
+
+To modify the order of parser types:
+
+  Date.use_parsers(:mine, :num, :iso, :us)
+  DateTime.use_parsers(:time, :iso, :mine, :eu, :num)
+
+== Performance
+
+=== Synthetic Benchmark
+
+  Date vs. ThirdBase::Date: 20000 Iterations
+        user     system      total        real
+  Date.new                  1.210000   0.000000   1.210000 (  1.209048)
+  ThirdBase::Date.new       0.240000   0.000000   0.240000 (  0.237548)
+  Date.new >>               4.100000   0.010000   4.110000 (  4.107972)
+  ThirdBase::Date.new >>    0.580000   0.010000   0.590000 (  0.585797)
+  Date.new +                1.580000   0.030000   1.610000 (  1.613447)
+  ThirdBase::Date.new +     0.810000   0.000000   0.810000 (  0.803092)
+  Date.parse                6.180000   0.180000   6.360000 (  6.364501)
+  ThirdBase::Date.parse     0.540000   0.000000   0.540000 (  0.532560)
+  Date.strptime             6.680000   0.030000   6.710000 (  6.707893)
+  ThirdBase::Date.strptime  2.200000   0.040000   2.240000 (  2.241585)
+  DateTime vs. ThirdBase::DateTime: 20000 Iterations
+        user     system      total        real
+  DateTime.new                  3.490000   0.270000   3.760000 (  3.760513)
+  ThirdBase::DateTime.new       0.350000   0.000000   0.350000 (  0.357525)
+  DateTime.new >>               6.720000   0.230000   6.950000 (  6.953825)
+  ThirdBase::DateTime.new >>    0.840000   0.020000   0.860000 (  0.854347)
+  DateTime.new +                3.730000   0.170000   3.900000 (  3.894309)
+  ThirdBase::DateTime.new +     0.780000   0.060000   0.840000 (  0.834865)
+  DateTime.parse                8.450000   0.400000   8.850000 (  8.854514)
+  ThirdBase::DateTime.parse     0.980000   0.040000   1.020000 (  1.015109)
+  DateTime.strptime            10.860000   0.380000  11.240000 ( 11.243913)
+  ThirdBase::DateTime.strptime  3.410000   0.160000   3.570000 (  3.574491)
+
+=== Real World Example
+
+ThirdBase was written to solve a real world problem, slow retreval of records
+from a database because they contained many date fields. The table in
+question (employees), has 23 fields, 5 of which are date fields.  Here are
+the results of selecting all records for the database via Sequel, both with
+and without third_base:
+
+  $ script/benchmarker 100 Employee.all
+              user     system      total        real
+  #1     25.990000   0.040000  26.030000 ( 27.587781)
+  $ third_base script/benchmarker 100 Employee.all
+              user     system      total        real
+  #1     13.640000   0.100000  13.740000 ( 15.018741)
+
+Note that the times above include the time to query the database and
+instantiate all of the Model objects.  In this instance you can see that
+ThirdBase doubles performance with no change to the existing code.  This is
+do to the fact that previously, date-related code took about 3/4 of the
+processing time:
+
+  ruby-prof graph profile without ThirdBase for Employee.all 100 times:
+
+  75.87%   1.05%    101.51      1.40      0.00    100.12            85500     <Class::Date>#new (/usr/local/lib/ruby/1.8/date.rb:725}
+
+  ruby-prof graph profile with ThirdBase for Employee.all 100 times:
+
+  36.43%   1.29%     18.01      0.64      0.00     17.37            85500     <Class::ThirdBase::Date>#new 
+
+ThirdBase still takes up over a third of the processing time, but the total
+time it takes has been reduced by a factor of 5.  There may be opportunities
+to further speed up ThirdBase--while it was designed to be faster than the
+default Date class, there have been no attempts to optimize its performance.
+
+== License
+
+ThirdBase is released under the MIT License.  See the LICENSE file for details.
+
+== Author
+
+Jeremy Evans <code@jeremyevans.net>

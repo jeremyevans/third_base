@@ -1,0 +1,4 @@
+#!/usr/bin/env ruby
+ENV['RUBYOPT'] = "-rdate #{ENV['RUBYOPT']}"
+ENV['RUBYLIB'] = "#{File.join(File.dirname(File.dirname(__FILE__)), 'lib')}:#{File.join(File.dirname(File.dirname(__FILE__)), 'lib', 'third_base', 'compat')}:#{ENV['RUBYLIB']}"
+exec(*ARGV)
