@@ -18,19 +18,19 @@ and the fact that the Astronomical Julian Date differs from the Julian
 Date, much of the complexity of Ruby's standard Date/DateTime class can
 be removed, and there can be significant improvements in speed.
 
+== Resources
+
+* {RDoc}[http://third-base.rubyforge.org]
+* {Source code}[http://github.com/jeremyevans/third_base]
+* {Bug tracking}[http://rubyforge.org/projects/third-base/]
+
+To check out the source code:
+  
+    git clone git://github.com/jeremyevans/third_base.git
+
 == Installation
 
   sudo gem install third_base
-
-== Source
-
-Source is available via github:
-
-  http://github.com/jeremyevans/third_base
-
-You can check it out with git:
-
-  git clone git://github.com/jeremyevans/third_base.git
 
 == Usage and Compatibility
 
