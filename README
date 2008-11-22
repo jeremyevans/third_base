@@ -220,7 +220,7 @@ To modify the order of parser types:
 
 === Real World Example
 
-ThirdBase was written to solve a real world problem, slow retreval of records
+ThirdBase was written to solve a real world problem, slow retrieval of records
 from a database because they contained many date fields. The table in
 question (employees), has 23 fields, 5 of which are date fields.  Here are
 the results of selecting all records for the database via Sequel, both with
