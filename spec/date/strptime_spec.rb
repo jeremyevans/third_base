@@ -59,7 +59,7 @@ describe "Date#stpftime" do
 
   it "should be able to parse the year day with leading zeroes" do
     d = Date.today
-    Date.strptime("050", "%j").should == Date.civil(2008, 2, 19)
+    Date.strptime("050", "%j").should == Date.civil(Date.today.year, 2, 19)
   end
 
   it "should be able to parse the month with leading zeroes" do
