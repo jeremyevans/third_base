@@ -168,11 +168,28 @@ To add a parser to a parser type:
     t = Time.now
     {:civil=>[t.year, t.mon, t.day]}
   end
+
   DateTime.add_parser(:mine, /\Anow\z/i) do |m|
     t = Time.now
     {:civil=>[t.year, t.mon, t.day], :parts=>[t.hour, t.min, t.sec, t.usec] \
       :offset=>t.utc_offset}
   end
+
+If you add a DateTime parser that may guess at certain values instead of
+parsing them out of the string, you should include a :not_parsed entry which
+is an array of symbols indicating items that were not parsed directly out
+of the string.  This is only necessary if you are using the compatibility
+mode and want better compatibility for Date._parse (which ruby's Time.parse
+method uses internally):
+
+  DateTime.add_parser(:mine, /\A(\d\d)_(\d\d)_(\d{4})\z/i) do |m|
+    {:civil=>[m[3].to_i, m[2].to_i, m[1].to_i], :parts=>[0,0,0,0], :offset=>0, \
+     :not_parsed=>[:hour, :min, :sec, :sec_fraction, :offset, :zone]}
+  end
+
+The entries in :not_parsed should match keys that can be returned by
+Date._parse, so in addition to the ones listed above, you can also use
+:year, :mon, and :mday.
 
 Adding a parser to a parser type adds it to the front of the array of parsers 
 for that type, so it will be tried before other parsers for that type.  It is

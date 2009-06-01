@@ -42,7 +42,7 @@ module ThirdBase
     # * :zone : time zone offset as string
     def _parse(str, comp=false)
       d = DateTime.parse(str)
-      {:mon=>d.mon, :zone=>d.zone, :sec=>d.sec, :year=>d.year, :hour=>d.hour, :offset=>d.offset, :mday=>d.day, :min=>d.min, :sec_fraction=>d.usec/1000000.0}
+      {:mon=>d.mon, :zone=>d.zone, :sec=>d.sec, :year=>d.year, :hour=>d.hour, :offset=>d.offset, :mday=>d.day, :min=>d.min, :sec_fraction=>d.usec/1000000.0}.reject{|k, v| d.not_parsed.include?(k)}
     end
     
     # Converts an Astronomical Julian Date to an Astronomical Modified Julian Date (substracts an integer from ajd)

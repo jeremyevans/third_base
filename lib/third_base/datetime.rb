@@ -12,13 +12,13 @@ module ThirdBase
     DEFAULT_PARSERS[:time] = [[%r{\A#{TIME_RE_STRING}\z}io, proc do |m|
         unless m[0] == ''
           t = Time.now
-          add_parsed_time_parts(m, {:civil=>[t.year, t.mon, t.day]}, 1)
+          add_parsed_time_parts(m, {:civil=>[t.year, t.mon, t.day], :not_parsed=>[:year, :mon, :mday]}, 1)
         end
       end]]
     DEFAULT_PARSERS[:iso] = [[%r{\A(-?\d{4})[-./ ](\d\d)[-./ ](\d\d)#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[1].to_i, m[2].to_i, m[3].to_i])}]]
     DEFAULT_PARSERS[:us] = [[%r{\A(\d\d?)[-./ ](\d\d?)[-./ ](\d\d(?:\d\d)?)#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[two_digit_year(m[3]), m[1].to_i, m[2].to_i])}],
-      [%r{\A(\d\d?)/(\d?\d)#{TIME_RE_STRING}\z}o, proc{|m| add_parsed_time_parts(m, {:civil=>[Time.now.year, m[1].to_i, m[2].to_i]}, 3)}],
-      [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](\d\d?)(?:st|nd|rd|th)?,?(?:[-./ ](-?(?:\d\d(?:\d\d)?)))?#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[3] ? two_digit_year(m[3]) : Time.now.year, MONTH_NUM_MAP[m[1].downcase], m[2].to_i])}],
+      [%r{\A(\d\d?)/(\d?\d)#{TIME_RE_STRING}\z}o, proc{|m| add_parsed_time_parts(m, {:civil=>[Time.now.year, m[1].to_i, m[2].to_i], :not_parsed=>:year}, 3)}],
+      [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](\d\d?)(?:st|nd|rd|th)?,?(?:[-./ ](-?(?:\d\d(?:\d\d)?)))?#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[3] ? two_digit_year(m[3]) : Time.now.year, MONTH_NUM_MAP[m[1].downcase], m[2].to_i], :not_parsed=>m[3] ? [] : [:year])}],
       [%r{\A(\d\d?)(?:st|nd|rd|th)?[-./ ]#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[3].to_i, MONTH_NUM_MAP[m[2].downcase], m[1].to_i])}],
       [%r{\A(-?\d{4})[-./ ]#{MONTHNAME_RE_PATTERN}[-./ ](\d\d?)(?:st|nd|rd|th)?#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[1].to_i, MONTH_NUM_MAP[m[2].downcase], m[3].to_i])}],
       [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, {:civil=>[m[2].to_i, MONTH_NUM_MAP[m[1].downcase], 1]}, 3)}]]
@@ -30,11 +30,11 @@ module ThirdBase
         case m.length
         when 2
           t = Time.now
-          {:civil=>[t.year, t.mon, m.to_i]}
+          {:civil=>[t.year, t.mon, m.to_i], :not_parsed=>[:year, :mon, :mday]}
         when 3
-          {:ordinal=>[Time.now.year, m.to_i]}
+          {:ordinal=>[Time.now.year, m.to_i], :not_parsed=>[:year, :mon, :mday]}
         when 4
-          {:civil=>[Time.now.year, m[0..1].to_i, m[2..3].to_i]}
+          {:civil=>[Time.now.year, m[0..1].to_i, m[2..3].to_i], :not_parsed=>[:year]}
         when 5
           {:ordinal=>[two_digit_year(m[0..1]), m[2..4].to_i]}
         when 6
@@ -128,16 +128,25 @@ module ThirdBase
     # * i + 4 : meridian indicator
     # * i + 5 : time zone
     def self.add_parsed_time_parts(m, h, i=4)
+      not_parsed = h[:not_parsed] || []
       hour = m[i].to_i
       meridian = m[i+4]
       hour = hour_with_meridian(hour, /a/io.match(meridian) ? :am : :pm) if meridian
-      offset = if m[i+5]
-        x = m[i+5].gsub(':','')
-        x == 'Z' ? 0 : x[0..2].to_i*3600 + x[3..4].to_i*60
+      offset = if of = m[i+5]
+        x = of.gsub(':','')
+        offset = x == 'Z' ? 0 : x[0..2].to_i*3600 + x[3..4].to_i*60
       else
+        not_parsed.concat([:zone, :offset])
         Time.now.utc_offset
       end
-      h.merge!(:parts=>[hour, m[i+1].to_i, m[i+2].to_i, (m[i+3].to_f/0.000001).to_i], :offset=>offset)
+      min = m[i+1].to_i
+      sec = m[i+2].to_i
+      sec_fraction = m[i+3].to_f 
+      not_parsed << :hour unless m[i]
+      not_parsed << :min unless m[i+1]
+      not_parsed << :sec unless m[i+2]
+      not_parsed << :sec_fraction unless m[i+3]
+      h.merge!(:parts=>[hour, min, sec, (sec_fraction/0.000001).to_i], :offset=>offset, :not_parsed=>not_parsed)
       h
     end
     
@@ -212,6 +221,9 @@ module ThirdBase
     attr_reader :offset
     alias utc_offset offset
     
+    # Which parts of this datetime were guessed instead of being parsed from the input.
+    attr_reader :not_parsed
+
     # Called by DateTime.new!, should be a hash with the following possible keys:
     #
     # * :civil, :commericial, :jd, :ordinal : See ThirdBase::Date#initialize
@@ -221,6 +233,7 @@ module ThirdBase
     #
     # Raises an ArgumentError if an invalid date is used.  DateTime objects are immutable once created.
     def initialize(opts)
+      @not_parsed = opts[:not_parsed] || []
       @offset = opts[:offset]
       raise(ArgumentError, 'invalid datetime') unless @offset.is_a?(Integer) and @offset <= 43200 and @offset >= -43200
       if opts[:parts]

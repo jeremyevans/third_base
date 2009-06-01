@@ -22,8 +22,13 @@ describe ThirdBase::CompatClassMethods do
   end
 
   it "#_parse should parse the date string and return a hash" do
-    Date._parse('2008-10-20 11:12:13-08:00').should == {:mon=>10, :zone=>'-08:00', :sec=>13, :sec_fraction=>0.0, :year=>2008, :hour=>11, :offset=>-28800, :mday=>20, :min=>12}
-    Date._parse('2008-10-20 11:12:13-08:00', true).should == {:mon=>10, :zone=>'-08:00', :sec=>13, :sec_fraction=>0.0, :year=>2008, :hour=>11, :offset=>-28800, :mday=>20, :min=>12}
+    Date._parse('2008-10-20 11:12:13.0-08:00').should == {:mon=>10, :zone=>'-08:00', :sec=>13, :sec_fraction=>0.0, :year=>2008, :hour=>11, :offset=>-28800, :mday=>20, :min=>12}
+    Date._parse('2008-10-20 11:12:13.0-08:00', true).should == {:mon=>10, :zone=>'-08:00', :sec=>13, :sec_fraction=>0.0, :year=>2008, :hour=>11, :offset=>-28800, :mday=>20, :min=>12}
+  end
+
+  it "#_parse should not contain fields in the hash that were guessed" do
+    Date._parse('2008-10-20').should == {:year=>2008, :mday=>20, :mon=>10}
+    Date._parse('11:12:13').should == {:sec=>13, :hour=>11, :min=>12}
   end
 
   it "#ajd_to_amjd should convert a astronomical julian date to a astronomical modified julian date" do
