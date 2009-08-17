@@ -82,6 +82,10 @@ describe :date_parse, :shared => true do
     Date.parse("november#{@sep}5th").should == Date.civil(Date.today.year, 11, 5)
   end
 
+  it "can parse a weekday, month, day, and year into a Date object" do
+    Date.parse("Mon Aug 10 2009").should == Date.civil(2009, 8, 10)
+  end
+
   it "can parse a month name, day and year into a Date object" do
     Date.parse("november#{@sep}5th#{@sep}2005").should == Date.civil(2005, 11, 5)
   end
@@ -209,10 +213,23 @@ describe "Date parser modifications" do
     Date.reset_parsers!
   end
   
-  it "should be able to add a parser to an existing parser type that takes precedence" do
+  it "should raise an ArgumentError if it can't parse a date" do
     proc{Date.parse("today")}.should raise_error(ArgumentError)
+  end
+
+  it "should be able to add a parser to an existing parser type that takes precedence" do
     Date.add_parser(:iso, /today/){t = Time.now; {:civil=>[t.year, t.mon, t.day]}}
     Date.parse("today").should == Date.today
+  end
+  
+  it "should be able to handle parsers that return Date instances" do
+    Date.add_parser(:iso, /today/){t = Time.now; Date.new(t.year, t.mon, t.day)}
+    Date.parse("today").should == Date.today
+  end
+  
+  it "should be able to specify a strptime format string for a parser" do
+    Date.add_parser(:iso, "%d<<%m<<%Y")
+    Date.parse("03<<02<<2001").should == Date.new(2001, 2, 3)
   end
   
   it "should be able to add new parser types" do

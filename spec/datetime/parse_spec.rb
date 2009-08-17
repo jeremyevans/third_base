@@ -22,7 +22,7 @@ describe "DateTime#parse" do
     DateTime.parse("12:02:03p").should == DateTime.civil(DateTime.today.year, DateTime.today.month, DateTime.today.day, 12, 2, 3)
     proc{DateTime.parse("13:02:03p")}.should raise_error(ArgumentError)
     proc{DateTime.parse("00:02:03p")}.should raise_error(ArgumentError)
-    proc{DateTime.parse("00:02:03r")}.should raise_error(ArgumentError)
+    proc{DateTime.parse("00:02:03rsdf")}.should raise_error(ArgumentError)
   end
 
   it "should use the current time offset if no time offset is specified" do
@@ -32,6 +32,50 @@ describe "DateTime#parse" do
     DateTime.parse("01:02:03-01:00").should == DateTime.civil(DateTime.today.year, DateTime.today.month, DateTime.today.day, 1, 2, 3, 0, -3600)
     DateTime.parse("01:02:03+01").should == DateTime.civil(DateTime.today.year, DateTime.today.month, DateTime.today.day, 1, 2, 3, 0, 3600)
     DateTime.parse("01:02:03-01").should == DateTime.civil(DateTime.today.year, DateTime.today.month, DateTime.today.day, 1, 2, 3, 0, -3600)
+  end
+
+  it "should parse the time zone abbreviations supported by ruby's Time class" do
+    DateTime.parse("01:02:03 UTC").offset.should == 0
+    DateTime.parse("01:02:03 UT").offset.should == 0
+    DateTime.parse("01:02:03 GMT").offset.should == 0
+    DateTime.parse("01:02:03 EST").offset.should == -5*3600
+    DateTime.parse("01:02:03 EDT").offset.should == -4*3600
+    DateTime.parse("01:02:03 CST").offset.should == -6*3600
+    DateTime.parse("01:02:03 CDT").offset.should == -5*3600
+    DateTime.parse("01:02:03 MST").offset.should == -7*3600
+    DateTime.parse("01:02:03 MDT").offset.should == -6*3600
+    DateTime.parse("01:02:03 PST").offset.should == -8*3600
+    DateTime.parse("01:02:03 PDT").offset.should == -7*3600
+    DateTime.parse("01:02:03 A").offset.should == 1*3600
+    DateTime.parse("01:02:03 B").offset.should == 2*3600
+    DateTime.parse("01:02:03 C").offset.should == 3*3600
+    DateTime.parse("01:02:03 D").offset.should == 4*3600
+    DateTime.parse("01:02:03 E").offset.should == 5*3600
+    DateTime.parse("01:02:03 F").offset.should == 6*3600
+    DateTime.parse("01:02:03 G").offset.should == 7*3600
+    DateTime.parse("01:02:03 H").offset.should == 8*3600
+    DateTime.parse("01:02:03 I").offset.should == 9*3600
+    DateTime.parse("01:02:03 K").offset.should == 10*3600
+    DateTime.parse("01:02:03 L").offset.should == 11*3600
+    DateTime.parse("01:02:03 M").offset.should == 12*3600
+    DateTime.parse("01:02:03 N").offset.should == -1*3600
+    DateTime.parse("01:02:03 O").offset.should == -2*3600
+    DateTime.parse("01:02:03 P").offset.should == -3*3600
+    DateTime.parse("01:02:03 Q").offset.should == -4*3600
+    DateTime.parse("01:02:03 R").offset.should == -5*3600
+    DateTime.parse("01:02:03 S").offset.should == -6*3600
+    DateTime.parse("01:02:03 T").offset.should == -7*3600
+    DateTime.parse("01:02:03 U").offset.should == -8*3600
+    DateTime.parse("01:02:03 V").offset.should == -9*3600
+    DateTime.parse("01:02:03 W").offset.should == -10*3600
+    DateTime.parse("01:02:03 X").offset.should == -11*3600
+    DateTime.parse("01:02:03 Y").offset.should == -12*3600
+    DateTime.parse("01:02:03 Z").offset.should == 0
+  end
+
+  it "should parse the time strings output by ruby's Time class" do
+    proc{DateTime.parse(Time.now.to_s)}.should_not raise_error
+    proc{DateTime.parse(Time.now.strftime('%+'))}.should_not raise_error
   end
 
   it "can handle DD as month day number" do
@@ -318,15 +362,35 @@ describe "DateTime parser modifications" do
     DateTime.reset_parsers!
   end
   
+  it "should raise an ArgumentError if it can't parse a date" do
+    proc{DateTime.parse("today")}.should raise_error(ArgumentError)
+  end
+
   it "should be able to add a parser to an existing parser type that takes precedence" do
     d = DateTime.now
-    proc{DateTime.parse("today")}.should raise_error(ArgumentError)
     DateTime.add_parser(:iso, /\Anow\z/){{:civil=>[d.year, d.mon, d.day], :parts=>[d.hour, d.min, d.sec, d.usec], :offset=>d.offset}}
     DateTime.parse("now").should == d
   end
   
+  it "should be able to handle parsers that return Date instances" do
+    d = DateTime.now
+    DateTime.add_parser(:iso, /\Anow\z/){d}
+    DateTime.parse("now").should == d
+  end
+  
+  it "should be able to specify a strptime format string for a parser" do
+    DateTime.add_parser(:iso, "%Z||%S>>%M>>%H||%d<<%m<<%Y")
+    DateTime.parse("UTC||06>>05>>04||03<<02<<2001").should == DateTime.new(2001,2,3,4,5,6)
+  end
+
+  it "should assume current seconds if just offset is given" do
+    DateTime.add_parser_type(:mine)
+    DateTime.use_parsers(:mine)
+    DateTime.add_parser(:mine, "%Z")
+    DateTime.parse("UTC").sec.should == DateTime.now.sec
+  end
+
   it "should be able to add new parser types" do
-    proc{DateTime.parse("today")}.should raise_error(ArgumentError)
     DateTime.add_parser_type(:mine)
     d = DateTime.now
     DateTime.add_parser(:mine, /\Anow\z/){{:civil=>[d.year, d.mon, d.day], :parts=>[d.hour, d.min, d.sec, d.usec], :offset=>d.offset}}

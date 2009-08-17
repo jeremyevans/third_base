@@ -30,6 +30,35 @@ describe ThirdBase::CompatClassMethods do
     Date._parse('2008-10-20').should == {:year=>2008, :mday=>20, :mon=>10}
     Date._parse('11:12:13').should == {:sec=>13, :hour=>11, :min=>12}
   end
+  
+  it "#_parse should not contain fields in the hash that were guessed when a strptime-parser is used" do
+    DateTime.add_parser(:us, "%m-%d<>%H/%M")
+    Date._parse('10-11<>12/13').should == {:mon=>10, :mday=>11, :hour=>12, :min=>13}
+
+    DateTime.add_parser(:us, "%d")
+    Date._parse('11').should == {:mday=>11}
+
+    DateTime.add_parser(:us, "%m")
+    Date._parse('11').should == {:mon=>11}
+
+    DateTime.add_parser(:us, "%Y")
+    Date._parse('2009').should == {:year=>2009}
+
+    DateTime.add_parser(:us, "%H")
+    Date._parse('11').should == {:hour=>11}
+
+    DateTime.add_parser(:us, "%M")
+    Date._parse('11').should == {:min=>11}
+
+    DateTime.add_parser(:us, "%S")
+    Date._parse('20').should == {:sec=>20}
+
+    DateTime.add_parser(:us, "%Z")
+    Date._parse('UTC').should == {:zone=>'+00:00', :offset=>0}
+    Date._parse('CDT').should == {:zone=>'-05:00', :offset=>-18000}
+
+    DateTime.reset_parsers!
+  end
 
   it "#ajd_to_amjd should convert a astronomical julian date to a astronomical modified julian date" do
     Date.ajd_to_amjd(2400002).should == 1

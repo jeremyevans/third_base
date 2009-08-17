@@ -3,7 +3,7 @@
 ThirdBase differs from Ruby's standard Date/DateTime class in the following
 ways:
 
-- ThirdBase is roughly 2-12 times faster depending on usage
+- ThirdBase is roughly 2-10 times faster depending on usage
 - ThirdBase has a lower memory footprint
 - ThirdBase supports pluggable parsers
 - ThirdBase doesn't depend on Ruby's Rational class
@@ -150,17 +150,17 @@ To add a parser type:
   Date.add_parser_type(:mine)
   DateTime.add_parser_type(:mine)
 
-=== Adding Parsers to Parser Types
+=== Adding Regexp Parsers to Parser Types
 
-A ThirdBase Date/Datetime parser consists of two parts, a regular
-expression, and a proc that takes a MatchData object and returns a hash
-passed to Date/DateTime.new!.  The proc is only called if the regular
-expression matches the string to be parsed, and it can return nil if it
-is not able to successfully parse the string (even if the string matches
-the regular expression).  To add a parser, you use the add_parser class
-method, which takes an argument specifying which parser family to
-use, the regular expression, and a block that is used as a proc for the
-parser:
+A ThirdBase Date/Datetime regexp parser consists of two parts, a regular
+expression, and a block that takes a MatchData object and returns a 
+Date/DateTime instance or a hash to be passed to Date/DateTime.new!.  The
+block is only called if the regular expression matches the string to be
+parsed, and it can return nil if it is not able to successfully parse the
+string (even if the string matches the regular expression).  To add a
+parser, you use the add_parser class method, which takes an argument
+specifying which parser family to use, the regular expression, and a block
+that is used as a proc for the parser:
 
 To add a parser to a parser type:
 
@@ -194,6 +194,15 @@ Date._parse, so in addition to the ones listed above, you can also use
 Adding a parser to a parser type adds it to the front of the array of parsers 
 for that type, so it will be tried before other parsers for that type.  It is
 an error to add a parser to a parser type that doesn't exist.
+
+=== Adding strptime Parsers to Parser Types (New in 1.2.0)
+
+ThirdBase 1.2.0 added the ability to more easily create common parsers
+using the strptime format string syntax.  These are created similar to regexp
+parsers, but use a format string, and the block is then optional (and should
+be omitted unless you know what you are doing):
+
+  DateTime.add_parser(:mine, '%Z %m~%Y~%d %S`%M`%H')
 
 === Modifying the Order of Parsers Types
 

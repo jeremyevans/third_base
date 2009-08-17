@@ -43,7 +43,8 @@ module ThirdBase
       [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](\d\d?)(?:st|nd|rd|th)?,?(?:[-./ ](-?(?:\d\d(?:\d\d)?)))?\z}io, proc{|m| {:civil=>[m[3] ? two_digit_year(m[3]) : Time.now.year, MONTH_NUM_MAP[m[1].downcase], m[2].to_i]}}],
       [%r{\A(\d\d?)(?:st|nd|rd|th)?[-./ ]#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})\z}io, proc{|m| {:civil=>[m[3].to_i, MONTH_NUM_MAP[m[2].downcase], m[1].to_i]}}],
       [%r{\A(-?\d{4})[-./ ]#{MONTHNAME_RE_PATTERN}[-./ ](\d\d?)(?:st|nd|rd|th)?\z}io, proc{|m| {:civil=>[m[1].to_i, MONTH_NUM_MAP[m[2].downcase], m[3].to_i]}}],
-      [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})\z}io, proc{|m| {:civil=>[m[2].to_i, MONTH_NUM_MAP[m[1].downcase], 1]}}]]
+      [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})\z}io, proc{|m| {:civil=>[m[2].to_i, MONTH_NUM_MAP[m[1].downcase], 1]}}],
+      [%r{\A#{ABBR_DAYNAME_RE_PATTERN} #{ABBR_MONTHNAME_RE_PATTERN} (\d\d?) (-?\d{4})\z}io, proc{|m| {:civil=>[m[4].to_i, MONTH_NUM_MAP[m[2].downcase], m[3].to_i]}}]]
     DEFAULT_PARSERS[:eu] = [[%r{\A(\d\d?)[-./ ](\d\d?)[-./ ](\d\d\d\d)\z}o, proc{|m| {:civil=>[m[3].to_i, m[2].to_i, m[1].to_i]}}],
       [%r{\A(\d\d?)[-./ ](\d?\d)[-./ ](\d?\d)\z}o, proc{|m| {:civil=>[two_digit_year(m[1]), m[2].to_i, m[3].to_i]}}]]
     DEFAULT_PARSERS[:num] = [[%r{\A\d{2,8}\z}o, proc do |m|
@@ -91,13 +92,26 @@ module ThirdBase
       alias new! new
     end
     
-    # Add a parser to the parser type.  re should be
-    # a Regexp, and a block must be provided.  The block
-    # should take a single MatchData argument, a return
-    # either nil specifying it could not parse the string,
-    # or a hash of values to be passed to new!.
-    def self.add_parser(type, re, &block)
-      parser_hash[type].unshift([re, block])
+    # Add a parser to the parser type. Arguments:
+    # * type - The parser type to which to add the parser, should be a Symbol.
+    # * pattern - Can be either a Regexp or String:
+    #   * String - A strptime parser regular expression is created using pattern as the format string.
+    #     If a block is given, it is used.  If no block is given, the parser will
+    #     operate identically to strptime.
+    #   * Regexp - The regular expression is used directly.  In this case, a block must be provided,
+    #     or an error is raised.
+    # 
+    # The block, if provided, should take a single MatchData argument.  It should return
+    # nil if it cannot successfully parse the string, an instance of this class,  or a hash of
+    # values to be passed to new!.
+    def self.add_parser(type, pattern, &block)
+      if pattern.is_a?(String)
+        pattern, blk = strptime_pattern_and_block(pattern)
+        block ||= blk
+      else
+        raise(ArgumentError, 'must provide block for Regexp parser') unless block_given?
+      end
+      parser_hash[type].unshift([pattern, block])
     end
     
     # Add a parser type to the list of parser types.
@@ -144,7 +158,7 @@ module ThirdBase
       parsers(opts[:parser_types]) do |pattern, block|
         if m = pattern.match(s)
           if res = block.call(m)
-            return new!(res)
+            return res.is_a?(Hash) ? new!(res) : res
           end
         end
       end
@@ -166,24 +180,15 @@ module ThirdBase
     # Parse the string using the provided format (or the default format).
     # Raises an ArgumentError if the format does not match the string.
     def self.strptime(str, fmt=strptime_default)
-      blocks = []
+      pattern, block = strptime_pattern_and_block(fmt)
       s = str.strip
-      date_hash = {}
-      pattern = Regexp.escape(expand_strptime_format(fmt)).gsub(STRFTIME_RE) do |x|
-        pat, *blks = _strptime_part(x[1..1])
-        blocks += blks
-        pat
-      end
-      if m = /#{pattern}/i.match(s)
-        m.to_a[1..-1].zip(blocks) do |x, blk|
-          blk.call(date_hash, x)
-        end
-        new_from_parts(date_hash)
+      if m = pattern.match(s)
+        block.call(m)
       else
         raise ArgumentError, 'invalid date'
       end
     end
-    
+
     # Returns a date with the current year, month, and date.
     def self.today
       t = Time.now
@@ -283,6 +288,23 @@ module ThirdBase
       '%Y-%m-%d'
     end
     
+    def self.strptime_pattern_and_block(fmt)
+      blocks = []
+      pattern = Regexp.escape(expand_strptime_format(fmt)).gsub(STRFTIME_RE) do |x|
+        pat, *blks = _strptime_part(x[1..1])
+        blocks += blks
+        pat
+      end
+      block = proc do |m|
+        h = {}
+        m.to_a[1..-1].zip(blocks) do |x, blk|
+          blk.call(h, x)
+        end
+        new_from_parts(h)
+      end
+      [/\A#{pattern}\z/i, block]
+    end
+    
     def self.two_digit_year(y)
       y = if y.length == 2
         y = y.to_i
@@ -292,7 +314,7 @@ module ThirdBase
       end
     end
     
-    private_class_method :_expand_strptime_format, :_strptime_part, :default_parser_hash, :default_parser_list, :expand_strptime_format, :new_from_parts, :parser_hash, :parser_list, :parsers, :parsers_for_family, :strptime_default, :two_digit_year
+    private_class_method :_expand_strptime_format, :_strptime_part, :default_parser_hash, :default_parser_list, :expand_strptime_format, :new_from_parts, :parser_hash, :parser_list, :parsers, :parsers_for_family, :strptime_default, :strptime_pattern_and_block, :two_digit_year
     
     reset_parsers!
     

@@ -1,6 +1,6 @@
 spec = Gem::Specification.new do |s|
   s.name = "third_base"
-  s.version = "1.1.1"
+  s.version = "1.2.0"
   s.author = "Jeremy Evans"
   s.email = "code@jeremyevans.net"
   s.homepage = "http://third-base.rubyforge.org"

@@ -4,11 +4,16 @@ module ThirdBase
   # ThirdBase's DateTime class, which builds on the Date class and adds a time component of
   # hours, minutes, seconds, microseconds, and an offset from UTC.
   class DateTime < Date
-    
+    TIME_ZONE_SECOND_OFFSETS = {
+      'UTC'=>0, 'Z'=>0, 'UT'=>0, 'GMT'=>0,
+      'EST'=>-18000, 'EDT'=>-14400, 'CST'=>-21600, 'CDT'=>-18000, 'MST'=>-25200, 'MDT'=>-21600, 'PST'=>-28800, 'PDT'=>-25200,
+      'A'=>3600, 'B'=>7200, 'C'=>10800, 'D'=>14400, 'E'=>18000, 'F'=>21600, 'G'=>25200, 'H'=>28800, 'I'=>32400, 'K'=>36000, 'L'=>39600, 'M'=>43200,
+      'N'=>-3600, 'O'=>-7200, 'P'=>-10800, 'Q'=>-14400, 'R'=>-18000, 'S'=>-21600, 'T'=>-25200, 'U'=>-28800, 'V'=>-32400, 'W'=>-36000, 'X'=>-39600, 'Y'=>-43200}
     PARSER_LIST = []
     DEFAULT_PARSER_LIST = [:time, :iso, :us, :num]
     DEFAULT_PARSERS = {}
-    TIME_RE_STRING = '(?:[T ]?([\d ]?\d):(\d\d)(?::(\d\d(\.\d+)?))?([ap]m?)? ?(Z|[+-](?:\d\d:?(?:\d\d)?))?)?'
+    TIME_ZONE_RE_STRING = "(#{TIME_ZONE_SECOND_OFFSETS.keys.sort.join('|')}|[+-](?:\\d\\d:?(?:\\d\\d)?))"
+    TIME_RE_STRING = "(?:[T ]?([\\d ]?\\d):(\\d\\d)(?::(\\d\\d(\\.\\d+)?))?([ap]m?)? ?#{TIME_ZONE_RE_STRING}?)?"
     DEFAULT_PARSERS[:time] = [[%r{\A#{TIME_RE_STRING}\z}io, proc do |m|
         unless m[0] == ''
           t = Time.now
@@ -21,7 +26,8 @@ module ThirdBase
       [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](\d\d?)(?:st|nd|rd|th)?,?(?:[-./ ](-?(?:\d\d(?:\d\d)?)))?#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[3] ? two_digit_year(m[3]) : Time.now.year, MONTH_NUM_MAP[m[1].downcase], m[2].to_i], :not_parsed=>m[3] ? [] : [:year])}],
       [%r{\A(\d\d?)(?:st|nd|rd|th)?[-./ ]#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[3].to_i, MONTH_NUM_MAP[m[2].downcase], m[1].to_i])}],
       [%r{\A(-?\d{4})[-./ ]#{MONTHNAME_RE_PATTERN}[-./ ](\d\d?)(?:st|nd|rd|th)?#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[1].to_i, MONTH_NUM_MAP[m[2].downcase], m[3].to_i])}],
-      [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, {:civil=>[m[2].to_i, MONTH_NUM_MAP[m[1].downcase], 1]}, 3)}]]
+      [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, {:civil=>[m[2].to_i, MONTH_NUM_MAP[m[1].downcase], 1]}, 3)}],
+      [%r{\A#{ABBR_DAYNAME_RE_PATTERN} #{ABBR_MONTHNAME_RE_PATTERN} (\d\d?) #{TIME_RE_STRING} (-?\d{4})\z}io, proc{|m| add_parsed_time_parts(m, {:civil=>[m[10].to_i, MONTH_NUM_MAP[m[2].downcase], m[3].to_i]})}]]
     DEFAULT_PARSERS[:eu] = [[%r{\A(\d\d?)[-./ ](\d\d?)[-./ ](\d{4})#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[3].to_i, m[2].to_i, m[1].to_i])}],
       [%r{\A(\d\d?)[-./ ](\d?\d)[-./ ](\d?\d)#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[two_digit_year(m[1]), m[2].to_i, m[3].to_i])}]]
     DEFAULT_PARSERS[:num] = [[%r{\A(\d{2,8})#{TIME_RE_STRING}\z}io, proc do |n|
@@ -58,7 +64,7 @@ module ThirdBase
       minutes, seconds = i.divmod(60)
       h.merge!(:jd=>j+UNIXEPOCH, :hour=>hours, :min=>minutes, :sec=>seconds)
     end
-    STRPTIME_PROC_z = proc{|h,x| x=x.gsub(':',''); h[:offset] = (x == 'Z' ? 0 : x[0..2].to_i*3600 + x[3..4].to_i*60)}
+    STRPTIME_PROC_z = proc{|h,x| h[:offset] = convert_parsed_offset(x)}
     
     # Public Class Methods
     
@@ -102,7 +108,7 @@ module ThirdBase
       when '%T', '%X' then '%H:%M:%S'
       when '%R' then '%H:%M'
       when '%r' then '%I:%M:%S %p'
-      when '%+' then '%a %b %e %H:%M:%S %z %Y'
+      when '%+' then '%a %b %e %H:%M:%S %Z %Y'
       else super(v)
       end
     end
@@ -115,7 +121,7 @@ module ThirdBase
       when 'P', 'p' then ['([ap]m)', STRPTIME_PROC_P]
       when 'S' then ['(\d\d)', STRPTIME_PROC_S]
       when 's' then ['(\d+)', STRPTIME_PROC_s]
-      when 'z', 'Z' then ['(Z|[+-](?:\d{4}|\d\d:\d\d))', STRPTIME_PROC_z]
+      when 'z', 'Z' then [TIME_ZONE_RE_STRING, STRPTIME_PROC_z]
       else super(v)
       end
     end
@@ -133,8 +139,7 @@ module ThirdBase
       meridian = m[i+4]
       hour = hour_with_meridian(hour, /a/io.match(meridian) ? :am : :pm) if meridian
       offset = if of = m[i+5]
-        x = of.gsub(':','')
-        offset = x == 'Z' ? 0 : x[0..2].to_i*3600 + x[3..4].to_i*60
+        convert_parsed_offset(of)
       else
         not_parsed.concat([:zone, :offset])
         Time.now.utc_offset
@@ -168,11 +173,18 @@ module ThirdBase
     end
     
     def self.new_from_parts(date_hash)
+      not_parsed = [:hour, :min, :sec].reject{|x| date_hash.has_key?(x)}
+      not_parsed.concat([:zone, :offset]) unless date_hash.has_key?(:offset)
+      not_parsed << :year unless date_hash.has_key?(:year) || date_hash.has_key?(:cwyear)
+      not_parsed << :mon unless date_hash.has_key?(:month) || date_hash.has_key?(:cweek)
+      not_parsed << :mday unless date_hash.has_key?(:day) || date_hash.has_key?(:cwday)
+      not_parsed << :sec_fraction
+
       date_hash[:hour] = hour_with_meridian(date_hash[:hour], date_hash[:meridian]) if date_hash[:meridian]
       d = now
-      weights = {:cwyear=>1, :year=>1, :cweek=>2, :cwday=>3, :yday=>3, :month=>2, :day=>3, :hour=>4, :min=>5, :sec=>6}
+      weights = {:cwyear=>1, :year=>1, :cweek=>2, :cwday=>3, :yday=>3, :month=>2, :day=>3, :hour=>4, :min=>5, :sec=>6, :offset=>7}
       columns = {}
-      min = 7
+      min = 8
       max = 0
       date_hash.each do |k,v|
         if w = weights[k]
@@ -183,19 +195,29 @@ module ThirdBase
       offset = date_hash[:offset] || d.offset
       hour = date_hash[:hour] || (min > 4 ? d.hour : 0)
       minute = date_hash[:min] || (min > 5 ? d.min : 0)
-      sec = date_hash[:sec] || 0
+      sec = date_hash[:sec] || (min > 6 ? d.sec : 0)
+      hash = {:parts=>[hour, minute, sec, 0], :offset=>offset.to_i, :not_parsed=>not_parsed}
       if date_hash[:jd]
-        jd(date_hash[:jd], hour, minute, sec, 0, offset)
+        new!(hash.merge!(:jd=>date_hash[:jd]))
       elsif date_hash[:year] || date_hash[:yday] || date_hash[:month] || date_hash[:day] || !(date_hash[:cwyear] || date_hash[:cweek])
         if date_hash[:yday]
-          ordinal(date_hash[:year]||d.year, date_hash[:yday], hour, minute, sec, 0, offset)
+          new!(hash.merge!(:ordinal=>[date_hash[:year]||d.year, date_hash[:yday]]))
         else
-          civil(date_hash[:year]||d.year, date_hash[:month]||(min > 2 ? d.mon : 1), date_hash[:day]||(min > 3 ? d.day : 1), hour, minute, sec, 0, offset)
+          new!(hash.merge!(:civil=>[date_hash[:year]||d.year, date_hash[:month]||(min > 2 ? d.mon : 1), date_hash[:day]||(min > 3 ? d.day : 1)]))
         end
       elsif date_hash[:cwyear] || date_hash[:cweek] || date_hash[:cwday]
-        commercial(date_hash[:cwyear]||d.cwyear, date_hash[:cweek]||(min > 2 ? d.cweek : 1), date_hash[:cwday]||(min > 3 ? d.cwday : 1), hour, minute, sec, 0, offset)
+        new!(hash.merge!(:commercial=>[date_hash[:cwyear]||d.cwyear, date_hash[:cweek]||(min > 2 ? d.cweek : 1), date_hash[:cwday]||(min > 3 ? d.cwday : 1)]))
       else
         raise ArgumentError, 'invalid date'
+      end
+    end
+
+    def self.convert_parsed_offset(of)
+      if offset = TIME_ZONE_SECOND_OFFSETS[of.upcase]
+        offset
+      else
+        x = of.gsub(':','')
+        x[0..2].to_i*3600 + x[3..4].to_i*60
       end
     end
     
@@ -211,7 +233,7 @@ module ThirdBase
       '%Y-%m-%dT%H:%M:%S'
     end
     
-    private_class_method :_expand_strptime_format, :_strptime_part, :add_parsed_time_parts, :default_parser_hash, :default_parser_list, :new_from_parts, :parser_hash, :parser_list, :strptime_default
+    private_class_method :_expand_strptime_format, :_strptime_part, :add_parsed_time_parts, :convert_parsed_offset, :default_parser_hash, :default_parser_list, :new_from_parts, :parser_hash, :parser_list, :strptime_default
     
     reset_parsers!
     
@@ -342,7 +364,7 @@ module ThirdBase
     
     # Return the offset as a time zone string (+/-HHMM).
     def zone
-      strftime('%z')
+      strftime('%Z')
     end
     
     private
@@ -362,9 +384,9 @@ module ThirdBase
       when 'S' then '%02d' % sec
       when 's' then '%d' % ((jd - UNIXEPOCH)*86400 + hour*3600 + min*60 + sec - @offset)
       when 'T', 'X' then strftime('%H:%M:%S')
-      when '+' then strftime('%a %b %e %H:%M:%S %z %Y')
-      when 'Z' then @offset == 0 ? 'Z' : _strftime('z')
-      when 'z' then "%+03d:%02d" % (@offset/60).divmod(60)
+      when '+' then strftime('%a %b %e %H:%M:%S %Z %Y')
+      when 'Z' then "%+03d:%02d" % (@offset/60).divmod(60)
+      when 'z' then "%+03d%02d" % (@offset/60).divmod(60)
       else super(v)
       end
     end
@@ -385,7 +407,7 @@ module ThirdBase
     end
 
     def strftime_default
-      '%Y-%m-%dT%H:%M:%S%z'
+      '%Y-%m-%dT%H:%M:%S%Z'
     end
     
     def time_parts
