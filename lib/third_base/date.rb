@@ -86,12 +86,11 @@ module ThirdBase
     
     UNIXEPOCH = 2440588
     
-    # Public Class Methods
-    
     class << self
       alias new! new
     end
     
+    module ClassMethods
     # Add a parser to the parser type. Arguments:
     # * type - The parser type to which to add the parser, should be a Symbol.
     # * pattern - Can be either a Regexp or String:
@@ -104,7 +103,7 @@ module ThirdBase
     # The block, if provided, should take a single MatchData argument.  It should return
     # nil if it cannot successfully parse the string, an instance of this class,  or a hash of
     # values to be passed to new!.
-    def self.add_parser(type, pattern, &block)
+    def add_parser(type, pattern, &block)
       if pattern.is_a?(String)
         pattern, blk = strptime_pattern_and_block(pattern)
         block ||= blk
@@ -117,33 +116,33 @@ module ThirdBase
     # Add a parser type to the list of parser types.
     # Should be used if you want to add your own parser
     # types.
-    def self.add_parser_type(type)
+    def add_parser_type(type)
       parser_hash[type] ||= []
     end
     
     # Returns a new Date with the given year, month, and day.
-    def self.civil(year, mon, day)
+    def civil(year, mon, day)
       new!(:civil=>[year, mon, day])
     end
     
     # Returns a new Date with the given commercial week year,
     # commercial week, and commercial week day.
-    def self.commercial(cwyear, cweek, cwday=5)
+    def commercial(cwyear, cweek, cwday=5)
       new!(:commercial=>[cwyear, cweek, cwday])
     end
     
     # Returns a new Date with the given julian date.
-    def self.jd(j)
+    def jd(j)
       new!(:jd=>j)
     end
     
     # Calls civil with the given arguments.
-    def self.new(*args)
+    def new(*args)
       civil(*args)
     end
     
     # Returns a new Date with the given year and day of year.
-    def self.ordinal(year, yday)
+    def ordinal(year, yday)
       new!(:ordinal=>[year, yday])
     end
     
@@ -153,7 +152,7 @@ module ThirdBase
     # * :parser_types : an array of parser types to use,
     #   overriding the default or the ones specified by
     #   use_parsers.
-    def self.parse(str, opts={})
+    def parse(str, opts={})
       s = str.strip
       parsers(opts[:parser_types]) do |pattern, block|
         if m = pattern.match(s)
@@ -166,7 +165,7 @@ module ThirdBase
     end
     
     # Reset the parsers, parser types, and order of parsers used to the default.
-    def self.reset_parsers!
+    def reset_parsers!
       parser_hash.clear
       default_parser_hash.each do |type, parsers|
         add_parser_type(type)
@@ -179,7 +178,7 @@ module ThirdBase
     
     # Parse the string using the provided format (or the default format).
     # Raises an ArgumentError if the format does not match the string.
-    def self.strptime(str, fmt=strptime_default)
+    def strptime(str, fmt=strptime_default)
       pattern, block = strptime_pattern_and_block(fmt)
       s = str.strip
       if m = pattern.match(s)
@@ -190,19 +189,19 @@ module ThirdBase
     end
 
     # Returns a date with the current year, month, and date.
-    def self.today
+    def today
       t = Time.now
       civil(t.year, t.mon, t.day)
     end
     
     # Set the order of parser types to use to the given parser types.
-    def self.use_parsers(*parsers)
+    def use_parsers(*parsers)
       parser_list.replace(parsers)
     end
     
-    # Private Class Methods
+    private
     
-    def self._expand_strptime_format(v)
+    def _expand_strptime_format(v)
       case v
       when '%D', '%x' then '%m/%d/%y'
       when '%F' then '%Y-%m-%d'
@@ -211,7 +210,7 @@ module ThirdBase
       end
     end
 
-    def self._strptime_part(v)
+    def _strptime_part(v)
       case v
       when 'A' then [FULL_DAYNAME_RE_PATTERN, STRPTIME_PROC_A]
       when 'a' then [ABBR_DAYNAME_RE_PATTERN, STRPTIME_PROC_A]
@@ -235,19 +234,19 @@ module ThirdBase
       end
     end
     
-    def self.default_parser_hash
+    def default_parser_hash
       DEFAULT_PARSERS
     end
     
-    def self.default_parser_list
+    def default_parser_list
       DEFAULT_PARSER_LIST
     end
     
-    def self.expand_strptime_format(fmt)
+    def expand_strptime_format(fmt)
       fmt.gsub(STRFTIME_RE){|x| _expand_strptime_format(x)}
     end
     
-    def self.new_from_parts(date_hash)
+    def new_from_parts(date_hash)
       d = today
       if date_hash[:year] || date_hash[:yday] || date_hash[:month] || date_hash[:day]
         if date_hash[:yday]
@@ -262,15 +261,15 @@ module ThirdBase
       end
     end
     
-    def self.parser_hash
+    def parser_hash
       PARSERS
     end
     
-    def self.parser_list
+    def parser_list
       PARSER_LIST
     end
     
-    def self.parsers(parser_families=nil)
+    def parsers(parser_families=nil)
       (parser_families||parser_list).each do |parser_family|
         parsers_for_family(parser_family) do |pattern, block|
           yield(pattern, block)
@@ -278,17 +277,17 @@ module ThirdBase
       end
     end
     
-    def self.parsers_for_family(parser_family)
+    def parsers_for_family(parser_family)
       parser_hash[parser_family].each do |pattern, block|
         yield(pattern, block)
       end
     end
     
-    def self.strptime_default
+    def strptime_default
       '%Y-%m-%d'
     end
     
-    def self.strptime_pattern_and_block(fmt)
+    def strptime_pattern_and_block(fmt)
       blocks = []
       pattern = Regexp.escape(expand_strptime_format(fmt)).gsub(STRFTIME_RE) do |x|
         pat, *blks = _strptime_part(x[1..1])
@@ -305,7 +304,7 @@ module ThirdBase
       [/\A#{pattern}\z/i, block]
     end
     
-    def self.two_digit_year(y)
+    def two_digit_year(y)
       y = if y.length == 2
         y = y.to_i
         (y < 69 ? 2000 : 1900) + y
@@ -313,13 +312,12 @@ module ThirdBase
         y.to_i
       end
     end
-    
-    private_class_method :_expand_strptime_format, :_strptime_part, :default_parser_hash, :default_parser_list, :expand_strptime_format, :new_from_parts, :parser_hash, :parser_list, :parsers, :parsers_for_family, :strptime_default, :strptime_pattern_and_block, :two_digit_year
+    end
+    extend ClassMethods
     
     reset_parsers!
     
-    # Public Instance Methods
-    
+    module InstanceMethods
     # Called by Date.new!, Takes a hash with one of the following keys:
     #
     # * :civil : should be an array with 3 elements, a year, month, and day
@@ -407,7 +405,10 @@ module ThirdBase
       return false unless Date === date
       year == date.year and mon == date.mon and day == date.day
     end
-    alias_method :eql?, :==
+    
+    def eql?(date)
+      self == date
+    end
     
     # If d is a date, only true if it is equal to this date.  If d is Numeric, only true if it equals this date's julian date.
     def ===(d)
@@ -692,5 +693,7 @@ module ThirdBase
     def yday_from_month_day
       CUMMULATIVE_MONTH_DAYS[mon] + day + ((month > 2 and leap?) ? 1 : 0)
     end
+  end
+  include InstanceMethods
   end
 end

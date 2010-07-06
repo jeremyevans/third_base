@@ -4,6 +4,8 @@ module ThirdBase
   # ThirdBase's DateTime class, which builds on the Date class and adds a time component of
   # hours, minutes, seconds, microseconds, and an offset from UTC.
   class DateTime < Date
+    PARSERS = {}
+    UNIXEPOCH = ThirdBase::Date::UNIXEPOCH
     TIME_ZONE_SECOND_OFFSETS = {
       'UTC'=>0, 'Z'=>0, 'UT'=>0, 'GMT'=>0,
       'EST'=>-18000, 'EDT'=>-14400, 'CST'=>-21600, 'CDT'=>-18000, 'MST'=>-25200, 'MDT'=>-21600, 'PST'=>-28800, 'PDT'=>-25200,
@@ -27,7 +29,7 @@ module ThirdBase
       [%r{\A(\d\d?)(?:st|nd|rd|th)?[-./ ]#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[3].to_i, MONTH_NUM_MAP[m[2].downcase], m[1].to_i])}],
       [%r{\A(-?\d{4})[-./ ]#{MONTHNAME_RE_PATTERN}[-./ ](\d\d?)(?:st|nd|rd|th)?#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[1].to_i, MONTH_NUM_MAP[m[2].downcase], m[3].to_i])}],
       [%r{\A#{MONTHNAME_RE_PATTERN}[-./ ](-?\d{4})#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, {:civil=>[m[2].to_i, MONTH_NUM_MAP[m[1].downcase], 1]}, 3)}],
-      [%r{\A#{ABBR_DAYNAME_RE_PATTERN} #{ABBR_MONTHNAME_RE_PATTERN} (\d\d?) #{TIME_RE_STRING} (-?\d{4})\z}io, proc{|m| add_parsed_time_parts(m, {:civil=>[m[10].to_i, MONTH_NUM_MAP[m[2].downcase], m[3].to_i]})}]]
+      [%r{\A#{ABBR_DAYNAME_RE_PATTERN} #{ABBR_MONTHNAME_RE_PATTERN} +(\d\d?) #{TIME_RE_STRING} (-?\d{4})\z}io, proc{|m| add_parsed_time_parts(m, {:civil=>[m[10].to_i, MONTH_NUM_MAP[m[2].downcase], m[3].to_i]})}]]
     DEFAULT_PARSERS[:eu] = [[%r{\A(\d\d?)[-./ ](\d\d?)[-./ ](\d{4})#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[m[3].to_i, m[2].to_i, m[1].to_i])}],
       [%r{\A(\d\d?)[-./ ](\d?\d)[-./ ](\d?\d)#{TIME_RE_STRING}\z}io, proc{|m| add_parsed_time_parts(m, :civil=>[two_digit_year(m[1]), m[2].to_i, m[3].to_i])}]]
     DEFAULT_PARSERS[:num] = [[%r{\A(\d{2,8})#{TIME_RE_STRING}\z}io, proc do |n|
@@ -66,43 +68,42 @@ module ThirdBase
     end
     STRPTIME_PROC_z = proc{|h,x| h[:offset] = convert_parsed_offset(x)}
     
-    # Public Class Methods
-    
+    module ClassMethods
     # Create a new DateTime with the given year, month, day of month, hour, minute, second, microsecond and offset.
-    def self.civil(year, mon, day, hour=0, min=0, sec=0, usec=0, offset=0)
+    def civil(year, mon, day, hour=0, min=0, sec=0, usec=0, offset=0)
       new!(:civil=>[year, mon, day], :parts=>[hour, min, sec, usec], :offset=>offset)
     end
     
     # Create a new DateTime with the given commercial week year, commercial week, commercial week day, hour, minute
     # second, microsecond, and offset.
-    def self.commercial(cwyear, cweek, cwday=5, hour=0, min=0, sec=0, usec=0, offset=0)
+    def commercial(cwyear, cweek, cwday=5, hour=0, min=0, sec=0, usec=0, offset=0)
       new!(:commercial=>[cwyear, cweek, cwday], :parts=>[hour, min, sec, usec], :offset=>offset)
     end
     
     # Create a new DateTime with the given julian date, hour, minute, second, microsecond, and offset.
-    def self.jd(jd, hour=0, min=0, sec=0, usec=0, offset=0)
+    def jd(jd, hour=0, min=0, sec=0, usec=0, offset=0)
       new!(:jd=>jd, :parts=>[hour, min, sec, usec], :offset=>offset)
     end
     
     # Create a new DateTime with the given julian day, fraction of the day (0.5 is Noon), and offset.
-    def self.jd_fract(jd, fract=0.0, offset=0)
+    def jd_fract(jd, fract=0.0, offset=0)
       new!(:jd=>jd, :fract=>fract, :offset=>offset)
     end
     
     # Create a new DateTime with the current date and time.
-    def self.now
+    def now
       t = Time.now
       new!(:civil=>[t.year, t.mon, t.day], :parts=>[t.hour, t.min, t.sec, t.usec], :offset=>t.utc_offset)
     end
     
     # Create a new DateTime with the given year, day of year, hour, minute, second, microsecond, and offset.
-    def self.ordinal(year, yday, hour=0, min=0, sec=0, usec=0, offset=0)
+    def ordinal(year, yday, hour=0, min=0, sec=0, usec=0, offset=0)
       new!(:ordinal=>[year, yday], :parts=>[hour, min, sec, usec], :offset=>offset)
     end
     
-    # Private Class Methods
+    private
     
-    def self._expand_strptime_format(v)
+    def _expand_strptime_format(v)
       case v
       when '%c' then '%a %b %e %H:%M:%S %Y'
       when '%T', '%X' then '%H:%M:%S'
@@ -113,7 +114,7 @@ module ThirdBase
       end
     end
     
-    def self._strptime_part(v)
+    def _strptime_part(v)
       case v
       when 'H', 'I' then ['(\d\d)', STRPTIME_PROC_H]
       when 'k', 'l' then ['(\d?\d)', STRPTIME_PROC_H]
@@ -133,7 +134,7 @@ module ThirdBase
     # * i + 3 : sec fraction
     # * i + 4 : meridian indicator
     # * i + 5 : time zone
-    def self.add_parsed_time_parts(m, h, i=4)
+    def add_parsed_time_parts(m, h, i=4)
       not_parsed = h[:not_parsed] || []
       hour = m[i].to_i
       meridian = m[i+4]
@@ -155,15 +156,15 @@ module ThirdBase
       h
     end
     
-    def self.default_parser_hash
+    def default_parser_hash
       DEFAULT_PARSERS
     end
     
-    def self.default_parser_list
+    def default_parser_list
       DEFAULT_PARSER_LIST
     end
 
-    def self.hour_with_meridian(hour, meridian)
+    def hour_with_meridian(hour, meridian)
       raise(ArgumentError, 'invalid date') unless hour and hour >= 1 and hour <= 12
       if meridian == :am
         hour == 12 ? 0 : hour
@@ -172,7 +173,7 @@ module ThirdBase
       end
     end
     
-    def self.new_from_parts(date_hash)
+    def new_from_parts(date_hash)
       not_parsed = [:hour, :min, :sec].reject{|x| date_hash.has_key?(x)}
       not_parsed.concat([:zone, :offset]) unless date_hash.has_key?(:offset)
       not_parsed << :year unless date_hash.has_key?(:year) || date_hash.has_key?(:cwyear)
@@ -212,7 +213,7 @@ module ThirdBase
       end
     end
 
-    def self.convert_parsed_offset(of)
+    def convert_parsed_offset(of)
       if offset = TIME_ZONE_SECOND_OFFSETS[of.upcase]
         offset
       else
@@ -221,24 +222,23 @@ module ThirdBase
       end
     end
     
-    def self.parser_hash
+    def parser_hash
       PARSERS
     end
     
-    def self.parser_list
+    def parser_list
       PARSER_LIST
     end
     
-    def self.strptime_default
+    def strptime_default
       '%Y-%m-%dT%H:%M:%S'
     end
-    
-    private_class_method :_expand_strptime_format, :_strptime_part, :add_parsed_time_parts, :convert_parsed_offset, :default_parser_hash, :default_parser_list, :new_from_parts, :parser_hash, :parser_list, :strptime_default
+    end
+    extend ClassMethods
     
     reset_parsers!
     
-    # Instance Methods
-    
+    module InstanceMethods
     # This datetime's offset from UTC, in seconds.
     attr_reader :offset
     alias utc_offset offset
@@ -335,8 +335,11 @@ module ThirdBase
       return false unless DateTime === datetime
       super and hour == datetime.hour and min == datetime.min and sec == datetime.sec and usec == datetime.usec 
     end
-    alias_method :eql?, :==
     
+    def eql?(datetime)
+      self == datetime
+    end
+
     # Returns the fraction of the day for this datetime (Noon is 0.5)
     def fract
       @fract ||= (@hour*3600+@min*60+@sec+@usec/1000000.0)/86400.0
@@ -416,5 +419,7 @@ module ThirdBase
       end
       [@hour, @min, @sec, @usec]
     end
+  end
+  include InstanceMethods
   end
 end
