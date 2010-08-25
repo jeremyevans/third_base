@@ -9,6 +9,14 @@ ways:
 - ThirdBase doesn't depend on Ruby's Rational class
 - ThirdBase always uses the gregorian calendar
 
+== home_run
+
+This library has been replaced by home_run, which is a much faster version
+written mostly in C.  home_run is also much more compatible with the
+standard library, and works on both ruby 1.8 and ruby 1.9. For more details:
+
+  http://github.com/jeremyevans/home_run
+
 == Background
 
 The Ruby standard Date class tries to be all things to all people.  While
@@ -26,11 +34,11 @@ be removed, and there can be significant improvements in speed.
 
 To check out the source code:
   
-    git clone git://github.com/jeremyevans/third_base.git
+   git clone git://github.com/jeremyevans/third_base.git
 
 == Installation
 
-  sudo gem install third_base
+   gem install third_base
 
 == Usage and Compatibility
 
@@ -123,7 +131,19 @@ if you have no errors, it should be OK to use, and you'll get a nice speedup.
 * The gregorian calendar is now the only calendar used
 * All parsed two digit years are mapped to a year between 1969 and 2068
 * Default parsing may be different, but the user can modify the parsers used
-* Potentially others, but hopefully anything else can be fixed
+* Does not handle negative values in constructors
+* Date.day_fraction_to_time's 4th array entry is a fraction of the second
+  (between 0 and 1) instead of fraction of the second as fraction of the day
+  (between 0 and 1/86400.0)
+* Date.ajd_to_jd returns the argument instead of a 2 element aray
+* Date._strptime returns a Date instance instead of a hash
+* Calling constructors with no arguments yields a date that doesn't have
+  jd 0
+* Date#new_offset only modifies the offset, changing the absolute time,
+  instead of keeping the same absolute time by modifying the offset and
+  the local time.
+* Only the 1.8 API is implemented, so may it not work correctly on 1.9
+* Probably others too
 
 == Pluggable Parsers
 
